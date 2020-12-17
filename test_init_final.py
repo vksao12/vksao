@@ -65,6 +65,20 @@ channel_type = []
 FixedBossDateData = []
 indexFixedBossname = []
 
+endTime = None
+
+gc = None
+credentials = None
+
+regenembed = None
+command = None
+kill_Data = None
+kill_Time = None
+item_Data = None
+
+tmp_racing_unit = None
+setting_channel_name = None
+
 access_token = os.environ["BOT_TOKEN"]			
 git_access_token = os.environ["GIT_TOKEN"]			
 git_access_repo = os.environ["GIT_REPO"]			
@@ -541,7 +555,7 @@ async def dbSave():
 	try :
 		contents = repo.get_contents("my_bot.db")
 		repo.update_file(contents.path, "bossDB", information1, contents.sha)
-	except GithubException as e :
+	except Exception as e :
 		print ('save error!!')
 		print(e.args[1]['message']) # output: This repository is empty.
 		errortime = datetime.datetime.now()
@@ -659,7 +673,7 @@ async def init_data_list(filename, first_line : str = "-----------"):
 		contents = repo.get_contents(filename)
 		repo.update_file(contents.path, "deleted list " + str(filename), first_line, contents.sha)
 		print ('< 데이터 초기화 >')
-	except GithubException as e :
+	except Exception as e :
 		print ('save error!!')
 		print(e.args[1]['message']) # output: This repository is empty.
 		errortime = datetime.datetime.now()
@@ -676,7 +690,7 @@ async def data_list_Save(filename, first_line : str = "-----------",  save_data 
 	try :
 		contents = repo.get_contents(filename)
 		repo.update_file(contents.path, "updated " + str(filename), output_list, contents.sha)
-	except GithubException as e :
+	except Exception as e :
 		print ('save error!!')
 		print(e.args[1]['message']) # output: This repository is empty.
 		errortime = datetime.datetime.now()
@@ -791,10 +805,12 @@ class taskCog(commands.Cog):
 		await dbSave()
 		await data_list_Save("kill_list.ini", "-----척살명단-----", kill_Data)
 		await data_list_Save("item_list.ini", "-----아이템목록-----", item_Data)
-		if ctx.voice_client is not None:
-			if ctx.voice_client.is_playing():
-				ctx.voice_client.stop()
-			await ctx.voice_client.disconnect(force=True)
+
+		for vc in self.bot.voice_clients:
+			if vc.guild.id == int(ctx.guild.id):
+				if vc.is_playing():
+					vc.stop()
+			await vc.disconnect(force=True)
 
 		if basicSetting[21] != "1":
 			print("명치복구완료!")
@@ -1187,6 +1203,7 @@ class mainCog(commands.Cog):
 
 			chflg = 1
 		else:
+			curr_guild_info = None
 			for guild in self.bot.guilds:
 				for text_channel in guild.text_channels:
 					if basicSetting[7] == text_channel.id:
@@ -1375,7 +1392,7 @@ class mainCog(commands.Cog):
 			if len(ch_information) == 1 and len(ch_voice_information) == 1:
 				embed = discord.Embed(
 					title = "----- 채널 정보 -----",
-					description= '',
+					description = '',
 					color=0xff00ff
 					)
 				embed.add_field(
@@ -1426,6 +1443,7 @@ class mainCog(commands.Cog):
 		global basicSetting
 		if ctx.message.channel.id == basicSetting[7]:
 			msg = ctx.message.content[len(ctx.invoked_with)+1:]
+			channel = None
 			for i in range(len(channel_name)):
 				if  channel_name[i] == msg:
 					channel = int(channel_id[i])
@@ -2161,7 +2179,7 @@ class mainCog(commands.Cog):
 		if ctx.message.channel.id == basicSetting[7]:
 			msg = ctx.message.content[len(ctx.invoked_with)+1:]
 			sayMessage = msg
-			await self.bot.change_presence(status=discord.Status.dnd, activity=discord.Game(name=sayMessage, type=1), afk = False)
+			await self.bot.change_presence(status=discord.Status.online, activity=discord.Game(name=sayMessage, type=1), afk = False)
 			await ctx.send( '< 상태메세지 변경완료 >', tts=False)
 		else:
 			return
@@ -2801,6 +2819,9 @@ class mainCog(commands.Cog):
 		msg = ctx.message.content[len(ctx.invoked_with)+1:]
 		channel = ctx.message.channel.id #메세지가 들어온 채널 ID
 
+		if channel == basicSetting[7] and msg in ["사다리", "정산", "척살", "경주", "아이템"]:
+			return await ctx.send(f'명령어 채널은 `{msg} 채널`로 `설정`할 수 없습니다.', tts=False)
+
 		if msg == '사다리' : #사다리 채널 설정
 			inidata_textCH = repo.get_contents("test_setting.ini")
 			file_data_textCH = base64.b64decode(inidata_textCH.content)
@@ -3348,10 +3369,11 @@ class mainCog(commands.Cog):
 		if ctx.message.channel.id != basicSetting[7]:
 			return
 
-		if ctx.voice_client is not None:
-			if ctx.voice_client.is_playing():
-				ctx.voice_client.stop()
-			await ctx.voice_client.disconnect(force=True)
+		for vc in self.bot.voice_clients:
+			if vc.guild.id == int(ctx.guild.id):
+				if vc.is_playing():
+					vc.stop()
+			await vc.disconnect(force=True)
 
 		inidata_voice_use = repo.get_contents("test_setting.ini")
 		file_data_voice_use = base64.b64decode(inidata_voice_use.content)
@@ -3462,6 +3484,7 @@ class mainCog(commands.Cog):
 		for _ in range(num_cong + 5):
 			random.shuffle(user_name_list)
 
+		result_users = None
 		for _ in range(num_cong + 5):
 			result_users = random.sample(user_name_list, num_cong)
 
@@ -3598,7 +3621,7 @@ class IlsangDistributionBot(commands.AutoShardedBot):
 
 		# 디스코드에는 현재 본인이 어떤 게임을 플레이하는지 보여주는 기능이 있습니다.
 		# 이 기능을 사용하여 봇의 상태를 간단하게 출력해줄 수 있습니다.
-		await self.change_presence(status=discord.Status.dnd, activity=discord.Game(name=command[1][0], type=1), afk=False)
+		await self.change_presence(status=discord.Status.online, activity=discord.Game(name=command[1][0], type=1), afk=False)
 
 	async def on_message(self, msg):
 		await self.wait_until_ready()
